@@ -4,6 +4,8 @@
 
 BrainWhack won the WHACK 26 One Hour Hack at the University of Warwick on 7 November 2026. Everyone got the same function, `whack()`, and one hour to build the most creative thing around it. BrainWhack turns whack() into a programming language, then uses whack() as the only source of randomness in a genetic algorithm that breeds a program to print HONK.
 
+**Try it online: [brainwhack.vercel.app](https://brainwhack.vercel.app/?breed=HONK)**
+
 ![The lab breeding HONK live](demo.gif)
 
 ## Quick start
@@ -174,6 +176,8 @@ The target is HONK because the first program in a goose language should be Hello
 - **Phase bar:** whack() writes 40 programs, breed, prune, run.
 - **Finale:** the winner is pruned word by word, then runs one instruction at a time with a live stack. It ends with an "exit 0" stamp, or a screen shake and a red "Segmentation fault (core dumped)" stamp.
 
+The hosted version at [brainwhack.vercel.app](https://brainwhack.vercel.app) works slightly differently. Vercel functions can't stream, so `api/lab.py` runs each breed in full on the server in one request, at full speed, from `/tmp` (the only writable folder there, where whack() writes its file). The page then replays the sampled generations at a watchable pace. Locally, every generation streams live.
+
 The buttons breed whatever you type, let whack() pick the target, or run one wild whack() program. Add `?breed=HONK` to start breeding on load, and `?fast` for full speed instead of the watchable pace.
 
 ## How the hour went
@@ -229,6 +233,7 @@ python3 whack_server.py        # then open http://localhost:8026 for the drum ma
 | `whack.py` | The organisers' whack() function, unchanged |
 | `bred_HONK.bw`, `bred_WHACK.bw` | Programs the breeder made |
 | `demo.gif`, `screenshot.png` | The lab in action |
+| `api/lab.py`, `vercel.json` | The hosted version on Vercel |
 | `extras/` | The four earlier hacks |
 
 The hackathon submission itself is [pull request #4 on WarwickHack/one-hour-hack-26](https://github.com/WarwickHack/one-hour-hack-26/pull/4).
