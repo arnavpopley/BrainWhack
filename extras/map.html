@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Whack Atlas</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root { --bg: #14110f; --fg: #f4ecd8; --dim: #8a826f; --gold: #ffcc33; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.4 ui-monospace, Menlo, monospace; display: grid; grid-template-columns: 340px 1fr; height: 100vh; }
+  aside { padding: 18px 16px; overflow-y: auto; border-right: 1px solid #2c2620; }
+  h1 { margin: 0 0 6px; font-size: 26px; color: var(--gold); }
+  button { font: inherit; font-weight: 700; padding: 10px 18px; border-radius: 10px; border: 0; cursor: pointer; background: var(--gold); color: #14110f; margin: 8px 0; width: 100%; }
+  #map { height: 100vh; background: #1d1a17; }
+  .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9); }
+  .big { font-size: 28px; color: var(--gold); font-weight: 700; }
+  ol { padding-left: 26px; margin: 8px 0; }
+  li { margin: 4px 0; } li.now { color: var(--gold); }
+  li small { color: var(--dim); display: block; }
+  #err { color: #ff5d5d; }
+  #weather { color: var(--dim); margin: 8px 0; }
+  .card { background: #f4ecd8; color: #14110f; padding: 10px; border-radius: 10px; margin: 10px 0; transform: rotate(-1deg); box-shadow: 0 4px 14px #000a; }
+  .card small { color: #4a4238; }
+  .wx { color: var(--dim); }
+  .duck { font-size: 30px; line-height: 30px; text-align: center; filter: drop-shadow(0 2px 3px #000); }
+  a { color: var(--gold); }
+  @media (max-width: 720px) { body { grid-template-columns: 1fr; height: auto; } #map { height: 60vh; } aside { border: 0; } }
+</style>
+</head>
+<body>
+<aside>
+  <h1>🗺️ Whack Atlas</h1>
+  <p>Each word whack() picks is a real place, chosen by terrible pun. The duck flies the itinerary in order, with live weather from Open-Meteo and a Wikipedia postcard at every stop. <a href="index.html">← arcade</a></p>
+  <button id="go">WHACK: BOOK MY FLIGHTS</button>
+  <p id="err"></p>
+  <div id="summary"></div>
+  <p id="weather"></p>
+  <div id="card"></div>
+  <ol id="legs"></ol>
+</aside>
+<div id="map"></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// word: [lat, lng, place, why]
+const PLACES = {
+  whack:     [52.3793, -1.5615, "University of Warwick", "home of WHACK"],
+  compsoc:   [52.3830, -1.5600, "Warwick campus, north side", "CompSoc's natural habitat"],
+  warwick:   [52.2794, -1.5849, "Warwick Castle", "the original Warwick"],
+  hack:      [42.3601, -71.0942, "MIT, Cambridge MA", "where 'hack' got its meaning"],
+  duck:      [36.1696, -75.7535, "Duck, North Carolina", "a real town"],
+  quack:     [52.6772, 7.9575, "Quakenbrück, Germany", "close enough"],
+  goose:     [53.3017, -60.4167, "Happy Valley-Goose Bay, Canada", "goose"],
+  honk:      [22.3193, 114.1694, "Hong Kong", "Honk Kong"],
+  bug:       [42.3770, -71.1167, "Harvard", "the 1947 moth in the Mark II"],
+  feature:   [34.0928, -118.3287, "Hollywood", "feature films"],
+  oculus:    [41.8986, 12.4769, "The Pantheon, Rome", "the original oculus"],
+  marshall:  [7.1315, 171.1845, "Marshall Islands", "marshall"],
+  wace:      [49.2144, -2.1312, "Jersey", "birthplace of Wace, a Norman poet"],
+  brevan:    [40.1792, 44.4991, "Yerevan, Armenia", "it rhymes, that's all"],
+  howard:    [54.1210, -0.9067, "Castle Howard, Yorkshire", "howard"],
+  capital:   [51.5072, -0.1276, "London", "the capital"],
+  one:       [40.7127, -74.0134, "One World Trade Center", "one"],
+  bloomberg: [51.5126, -0.0907, "Bloomberg, City of London", "the terminal"],
+  netcraft:  [51.3811, -2.3590, "Bath", "Netcraft's home town"],
+  incident:  [33.3943, -104.5230, "Roswell, New Mexico", "the Roswell incident"],
+  io:        [-7.3133, 72.4111, "Diego Garcia", "British Indian Ocean Territory, the .io domain"],
+  pizza:     [40.8518, 14.2681, "Naples", "birthplace of pizza"],
+  coffee:    [7.2500, 36.2500, "Kaffa, Ethiopia", "where coffee comes from"],
+  sleep:     [41.0857, -73.8585, "Sleepy Hollow, New York", "what you won't get tonight"],
+  deploy:    [28.3922, -80.6077, "Cape Canaveral", "the biggest deploys"],
+  merge:     [50.3644, 7.6057, "Deutsches Eck, Koblenz", "where the Rhine and Moselle merge"],
+  conflict:  [50.6800, 4.4120, "Waterloo", "the merge conflict of 1815"],
+  commit:    [55.0016, -3.0636, "Gretna Green", "commitment"],
+  push:      [59.7225, 30.4156, "Pushkin, Russia", "push"],
+  prod:      [39.0438, -77.4874, "Ashburn, Virginia", "us-east-1, where prod goes down"],
+  segfault:  [35.2700, -119.8300, "San Andreas Fault", "seg-FAULT"],
+  null:      [0.0, 0.0, "Null Island", "0, 0. Where bad data goes"],
+  pointer:   [-48.8767, -123.3933, "Point Nemo", "the most remote point on Earth"],
+  stack:     [58.8860, -3.4300, "Old Man of Hoy", "a sea stack"],
+  overflow:  [43.0962, -79.0377, "Niagara Falls", "overflow"],
+  semicolon: [9.3547, -79.9001, "Colón, Panama", "semi-Colón"],
+  rubber:    [41.0814, -81.5190, "Akron, Ohio", "rubber capital of the world"],
+  demo:      [37.7842, -122.4016, "Moscone Center, San Francisco", "demo day"],
+  pitch:     [10.2316, -61.6283, "Pitch Lake, Trinidad", "a lake made of pitch"],
+  prize:     [59.3275, 18.0543, "Stockholm City Hall", "the Nobel Prize banquet"],
+  midnight:  [51.4769, -0.0005, "Greenwich", "where midnight is defined"],
+  wifi:      [-77.8419, 166.6863, "McMurdo Station, Antarctica", "still no wifi"],
+};
+
+// Wikipedia article for each stop's postcard
+const WIKI = {
+  whack: "University_of_Warwick", compsoc: "University_of_Warwick", warwick: "Warwick_Castle",
+  hack: "Massachusetts_Institute_of_Technology", duck: "Duck,_North_Carolina", quack: "Quakenbrück",
+  goose: "Happy_Valley-Goose_Bay", honk: "Hong_Kong", bug: "Grace_Hopper", feature: "Hollywood,_Los_Angeles",
+  oculus: "Pantheon,_Rome", marshall: "Marshall_Islands", wace: "Wace", brevan: "Yerevan",
+  howard: "Castle_Howard", capital: "London", one: "One_World_Trade_Center", bloomberg: "Bloomberg_London",
+  netcraft: "Bath,_Somerset", incident: "Roswell_incident", io: "Diego_Garcia", pizza: "Naples",
+  coffee: "Kaffa_Province", sleep: "Sleepy_Hollow,_New_York", deploy: "Cape_Canaveral", merge: "Deutsches_Eck",
+  conflict: "Battle_of_Waterloo", commit: "Gretna_Green", push: "Pushkin,_Saint_Petersburg", prod: "Ashburn,_Virginia",
+  segfault: "San_Andreas_Fault", null: "Null_Island", pointer: "Point_Nemo", stack: "Old_Man_of_Hoy",
+  overflow: "Niagara_Falls", semicolon: "Colón,_Panama", rubber: "Akron,_Ohio", demo: "Moscone_Center",
+  pitch: "Pitch_Lake", prize: "Stockholm_City_Hall", midnight: "Royal_Observatory,_Greenwich", wifi: "McMurdo_Station",
+};
+const WEATHER = {}, POSTCARD = {}, MARKERS = {};
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+function sky(code) {
+  if (code === 0) return "☀️"; if (code <= 2) return "🌤️"; if (code === 3) return "☁️"; if (code <= 48) return "🌫️";
+  if (code <= 57) return "🌦️"; if (code <= 67) return "🌧️"; if (code <= 77) return "❄️"; if (code <= 82) return "🌧️";
+  if (code <= 86) return "🌨️"; return "⛈️";
+}
+const wx = w => WEATHER[w] ? `${sky(WEATHER[w].weather_code)} ${Math.round(WEATHER[w].temperature_2m)}°C` : "";
+
+// Live weather for every stop in one Open-Meteo call, and a Wikipedia postcard for each place.
+async function enrich(uniq, words, id) {
+  try {
+    const lat = uniq.map(w => PLACES[w][0]).join(","), lng = uniq.map(w => PLACES[w][1]).join(",");
+    const res = await (await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,weather_code,wind_speed_10m`)).json();
+    (Array.isArray(res) ? res : [res]).forEach((r, i) => WEATHER[uniq[i]] = r.current);
+  } catch {}
+  if (id !== flight) return;
+  const known = uniq.filter(w => WEATHER[w]);
+  if (known.length) {
+    const t = w => WEATHER[w].temperature_2m, code = w => WEATHER[w].weather_code;
+    const hot = known.reduce((a, b) => t(a) > t(b) ? a : b), cold = known.reduce((a, b) => t(a) < t(b) ? a : b);
+    const pack = ["a rubber duck"];
+    if (known.some(w => t(w) < 0)) pack.push("a parka");
+    if (known.some(w => code(w) >= 71 && code(w) <= 86 && !(code(w) >= 80 && code(w) <= 82))) pack.push("snow boots");
+    if (known.some(w => (code(w) >= 51 && code(w) <= 67) || (code(w) >= 80 && code(w) <= 82) || code(w) >= 95)) pack.push("an umbrella");
+    if (known.some(w => t(w) > 26)) pack.push("sunscreen");
+    if (known.some(w => WEATHER[w].wind_speed_10m > 35)) pack.push("a heavier duck");
+    document.getElementById("weather").innerHTML = `live weather: hottest ${hot} ${wx(hot)}, coldest ${cold} ${wx(cold)}<br>pack: ${pack.join(", ")}`;
+    [...document.getElementById("legs").children].forEach((li, i) => li.querySelector(".wx").textContent = wx(words[i]));
+  }
+  // batch: 20 articles per request, so a whole flight is at most 3 calls to Wikipedia
+  const todo = uniq.filter(w => !POSTCARD[w]);
+  for (let i = 0; i < todo.length; i += 20) {
+    const chunk = todo.slice(i, i + 20);
+    try {
+      const url = "https://en.wikipedia.org/w/api.php?action=query&format=json&origin=*&redirects=1" +
+        "&prop=extracts|pageimages&exintro=1&explaintext=1&exsentences=3&exlimit=20&piprop=thumbnail&pithumbsize=400&pilimit=20" +
+        "&titles=" + encodeURIComponent(chunk.map(w => WIKI[w]).join("|"));
+      const q = (await (await fetch(url)).json()).query;
+      const hop = (list, t) => (list || []).find(x => x.from === t)?.to ?? t;
+      const pages = Object.values(q.pages);
+      chunk.forEach(w => {
+        const title = hop(q.redirects, hop(q.normalized, WIKI[w]));
+        const p = pages.find(pg => pg.title === title);
+        if (p) POSTCARD[w] = { extract: p.extract, thumbnail: p.thumbnail };
+      });
+    } catch {}
+  }
+  if (id !== flight) return;
+  uniq.forEach(w => MARKERS[w]?.bindPopup(cardHTML(w), { maxWidth: 280 }));
+}
+function cardHTML(w) {
+  const p = POSTCARD[w] || {}, img = p.thumbnail?.source;
+  return `${img ? `<img src="${esc(img)}" alt="" style="width:100%;max-height:150px;object-fit:cover;border-radius:6px">` : ""}
+    <b>${esc(w)}: ${esc(PLACES[w][2])}</b> ${wx(w)}<br><small>${esc((p.extract || PLACES[w][3]).slice(0, 260))}${(p.extract || "").length > 260 ? "…" : ""}</small>`;
+}
+function showCard(w) { document.getElementById("card").innerHTML = `<div class="card">${cardHTML(w)}</div>`; }
+
+const map = L.map("map", { worldCopyJump: true }).setView([30, 0], 2);
+L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  attribution: "&copy; OpenStreetMap contributors", maxZoom: 18,
+}).addTo(map);
+const layer = L.layerGroup().addTo(map);
+const duckIcon = L.divIcon({ className: "duck", html: "🦆", iconSize: [30, 30], iconAnchor: [15, 15] });
+
+function km([a, b], [c, d]) {
+  const r = Math.PI / 180, x = Math.sin((c - a) * r / 2) ** 2 + Math.cos(a * r) * Math.cos(c * r) * Math.sin((d - b) * r / 2) ** 2;
+  return 2 * 6371 * Math.asin(Math.sqrt(x));
+}
+
+let flight = 0;
+async function go() {
+  const err = document.getElementById("err");
+  let words;
+  try { words = (await (await fetch("/api/whack", { cache: "no-store" })).json()).words; err.textContent = ""; }
+  catch { err.textContent = "Couldn't reach whack(). Run python3 whack_server.py and open http://localhost:8026/map.html"; return; }
+  const id = ++flight;
+  layer.clearLayers();
+  const pts = words.map(w => PLACES[w].slice(0, 2));
+  let total = 0, longest = [0, "", ""];
+  for (let i = 1; i < pts.length; i++) {
+    const d = km(pts[i - 1], pts[i]); total += d;
+    if (d > longest[0]) longest = [d, words[i - 1], words[i]];
+  }
+  const visits = words.filter(w => w === "null").length;
+  const co2 = total * 0.15 / 1000; // roughly 0.15 kg CO2 per passenger-km, in tonnes
+  document.getElementById("summary").innerHTML = `
+    <div class="big">${Math.round(total).toLocaleString()} km</div>
+    ${words.length} stops · ${(total / 40075).toFixed(1)} times round the Earth<br>
+    longest leg: ${longest[1]} → ${longest[2]} (${Math.round(longest[0]).toLocaleString()} km)<br>
+    ${visits ? `visited Null Island ${visits} time${visits > 1 ? "s" : ""}` : "avoided Null Island"} · ~${co2.toFixed(1)} t CO₂, sorry`;
+  const legs = document.getElementById("legs");
+  legs.innerHTML = words.map(w => `<li>${w}: ${PLACES[w][2]} <span class="wx"></span><small>${PLACES[w][3]}</small></li>`).join("");
+  document.getElementById("weather").textContent = "checking the weather at every stop...";
+  document.getElementById("card").innerHTML = "";
+  const uniq = [...new Set(words)];
+  uniq.forEach(w => MARKERS[w] = L.circleMarker(PLACES[w].slice(0, 2), { radius: 5, color: "#ffcc33", fillOpacity: 0.9 })
+    .bindTooltip(`<b>${w}</b>: ${PLACES[w][2]}`).addTo(layer));
+  enrich(uniq, words, id);
+  map.fitBounds(L.latLngBounds(pts).pad(0.2));
+  const line = L.polyline([pts[0]], { color: "#ff5d5d", weight: 2, opacity: 0.8 }).addTo(layer);
+  const duck = L.marker(pts[0], { icon: duckIcon }).addTo(layer);
+  if (location.search.includes("instant")) {
+    line.setLatLngs(pts); duck.setLatLng(pts.at(-1));
+    setTimeout(() => { const w = words.find(w => POSTCARD[w]?.thumbnail); if (w) showCard(w); }, 4000);
+    return;
+  }
+  const legMs = Math.max(120, 9000 / pts.length);
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1], b = pts[i], t0 = performance.now();
+    await new Promise(done => {
+      (function frame(now) {
+        if (id !== flight) return done();
+        const t = Math.min(1, (now - t0) / legMs), p = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+        duck.setLatLng(p);
+        if (t < 1) requestAnimationFrame(frame); else { line.addLatLng(b); done(); }
+      })(t0);
+    });
+    if (id !== flight) return;
+    [...legs.children].forEach((li, j) => li.classList.toggle("now", j === i));
+    if (POSTCARD[words[i]]) showCard(words[i]);
+  }
+}
+document.getElementById("go").onclick = go;
+if (location.search.includes("auto")) go();
+</script>
+</body>
+</html>

@@ -1,0 +1,485 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BrainWhack Lab</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --bg: #0a0c0f; --panel: #11151a; --line: #212932; --fg: #e9f1f3; --dim: #6c7886;
+    --literal: #ffcc33; --math: #4dd0e1; --stack: #b388ff; --output: #ff5d8f; --control: #69f0ae;
+    --debug: #fff176; --noop: #3b4552; --segfault: #ff3b3b;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); font: 13px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  body { display: flex; flex-direction: column; min-height: 100vh; }
+  header { display: flex; align-items: center; gap: 18px; padding: 12px 20px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  h1 { margin: 0; font-size: 22px; letter-spacing: .06em; white-space: nowrap; }
+  h1 b { color: var(--literal); text-shadow: 0 0 18px rgba(255, 204, 51, .45); }
+  h1 small { display: block; font-size: 11px; color: var(--dim); letter-spacing: .02em; font-weight: 400; }
+  .controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  #target { width: 130px; background: #0d1014; border: 1px solid var(--line); color: var(--fg); font: inherit; font-size: 20px; font-weight: 700;
+            letter-spacing: .14em; padding: 7px 10px; border-radius: 9px; }
+  button { font: inherit; font-weight: 700; letter-spacing: .05em; padding: 10px 15px; border-radius: 9px; border: 0; cursor: pointer;
+           background: var(--literal); color: #0a0c0f; }
+  button.ghost { background: transparent; color: var(--fg); border: 1px solid var(--line); }
+  button:hover { filter: brightness(1.15); }
+  .stats { margin-left: auto; display: flex; gap: 16px; flex-wrap: wrap; }
+  .stat b { display: block; font-size: 17px; font-variant-numeric: tabular-nums; }
+  .stat span { color: var(--dim); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; }
+  .stat.hero b { color: var(--literal); font-size: 24px; text-shadow: 0 0 18px rgba(255, 204, 51, .5); }
+  #phases { display: flex; gap: 8px; padding: 10px 20px 0; flex-wrap: wrap; }
+  #phases span { padding: 5px 12px; border-radius: 999px; border: 1px solid var(--line); color: var(--dim); font-size: 12px; transition: all .3s; }
+  #phases span.on { color: #0a0c0f; background: var(--literal); border-color: var(--literal); box-shadow: 0 0 18px -4px var(--literal); font-weight: 700; }
+  main { flex: 1; display: grid; grid-template-columns: 210px minmax(0, 1fr) 360px; gap: 14px; padding: 14px 20px 18px; height: 0; min-height: 600px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; position: relative; overflow: hidden; min-height: 0; }
+  .panel h2 { margin: 0 0 10px; font-size: 10.5px; color: var(--dim); text-transform: uppercase; letter-spacing: .14em; font-weight: 600; }
+  .caption { color: var(--dim); font-size: 11px; margin: 8px 0 0; }
+  .feed { display: flex; flex-direction: column; }
+  .feed canvas { flex: 1; width: 100%; min-height: 0; display: block; }
+  .center { display: grid; grid-template-rows: auto minmax(110px, 1fr) 230px; gap: 14px; min-height: 0; }
+  #tiles { display: flex; gap: 10px; flex-wrap: wrap; min-height: 96px; }
+  .tile { width: 78px; padding: 6px 4px 10px; border-radius: 10px; background: #0c0f13; border: 1px solid var(--line); text-align: center; position: relative; overflow: hidden; transition: border-color .2s, box-shadow .2s; }
+  .tile b { display: block; font-size: 48px; line-height: 1.1; }
+  .tile small { display: block; color: var(--dim); font-size: 10px; white-space: nowrap; }
+  .tile i { position: absolute; left: 0; bottom: 0; height: 3px; width: calc(var(--d, 0) * 100%); background: var(--literal); transition: width .2s; }
+  .tile.hit { border-color: var(--control); box-shadow: 0 0 22px -6px var(--control), inset 0 0 14px -8px var(--control); }
+  .tile.hit b { color: var(--control); text-shadow: 0 0 16px var(--control); }
+  .tile.hit i { background: var(--control); }
+  .tile.near b { color: var(--literal); }
+  .tile.far b { color: #8f9aa6; }
+  .tile.empty b { color: #252d36; }
+  .tile.free b { color: var(--output); }
+  .tile.flip b { animation: flip .18s ease-out; }
+  @keyframes flip { from { transform: translateY(-35%); opacity: .15; } to { transform: none; opacity: 1; } }
+  #extra { color: var(--dim); align-self: center; }
+  #status { color: var(--dim); margin-top: 10px; min-height: 18px; }
+  #status.err { color: var(--segfault); }
+  #status b { color: var(--fg); }
+  #tapePanel { display: flex; flex-direction: column; }
+  #tape { display: flex; flex-wrap: wrap; gap: 5px; align-content: flex-start; overflow-y: auto; min-height: 0; flex: 1; padding: 2px; }
+  .chip { padding: 3px 7px; border-radius: 6px; font-size: 12px; color: var(--c); background: color-mix(in srgb, var(--c) 12%, transparent);
+          border: 1px solid color-mix(in srgb, var(--c) 32%, transparent); transition: opacity .35s, transform .2s, background .15s; }
+  .chip.fresh { animation: fresh 1s ease-out; }
+  @keyframes fresh { from { background: var(--c); color: #0a0c0f; box-shadow: 0 0 16px var(--c); } }
+  .chip.pc { background: var(--c); color: #0a0c0f; box-shadow: 0 0 18px var(--c); transform: scale(1.15); }
+  .chip.done { opacity: .45; }
+  .chip.cut { opacity: .1; text-decoration: line-through; transform: scale(.8); }
+  .chartPanel canvas { width: 100%; height: calc(100% - 22px); display: block; }
+  #vmPanel { display: grid; grid-template-columns: auto 1fr; gap: 18px; }
+  #stack { display: flex; align-items: flex-end; gap: 7px; height: 172px; min-width: 120px; }
+  #stack .empty { color: var(--dim); align-self: center; }
+  .bar { width: 40px; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; }
+  .bar i { width: 100%; border-radius: 5px 5px 2px 2px; background: linear-gradient(var(--math), color-mix(in srgb, var(--math) 25%, transparent)); transition: height .12s; }
+  .bar.top i { background: linear-gradient(var(--output), color-mix(in srgb, var(--output) 25%, transparent)); box-shadow: 0 0 16px -3px var(--output); }
+  .bar b { font-size: 12px; margin-top: 4px; }
+  .bar small { color: var(--dim); height: 16px; }
+  #note { font-size: 15px; align-self: center; }
+  #note b { font-size: 26px; display: block; margin-bottom: 4px; }
+  #note span { color: var(--dim); }
+  .poolPanel { display: flex; flex-direction: column; }
+  .poolPanel canvas { flex: 1; width: 100%; min-height: 0; display: block; image-rendering: pixelated; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 10px; font-size: 11px; color: var(--dim); }
+  .legend span::before { content: ""; display: inline-block; width: 9px; height: 9px; border-radius: 2px; background: var(--c); margin-right: 5px; }
+  #stamp { position: fixed; left: 50%; top: 46%; transform: translate(-50%, -50%) rotate(-8deg) scale(2.4); opacity: 0; pointer-events: none; z-index: 9;
+           border: 5px solid var(--sc, var(--segfault)); color: var(--sc, var(--segfault)); font: 900 44px/1.05 ui-monospace, Menlo, monospace; padding: 18px 30px;
+           text-align: center; border-radius: 14px; background: rgba(10, 12, 15, .88); text-transform: uppercase; letter-spacing: .03em;
+           text-shadow: 3px 0 rgba(77, 208, 225, .7), -3px 0 rgba(255, 59, 59, .7); transition: opacity .12s, transform .3s cubic-bezier(.2, 1.7, .4, 1); }
+  #stamp small { display: block; font-size: 20px; margin-top: 8px; letter-spacing: .08em; }
+  #stamp.show { opacity: 1; transform: translate(-50%, -50%) rotate(-8deg) scale(1); }
+  body.crash header, body.crash main { animation: shake .08s linear 9; }
+  @keyframes shake { 0%, 100% { transform: none; } 25% { transform: translate(-7px, 3px); } 50% { transform: translate(6px, -3px); } 75% { transform: translate(-3px, -2px); } }
+  body.crash::after { content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 8;
+                      background: repeating-linear-gradient(0deg, rgba(255, 59, 59, .1) 0 2px, transparent 2px 4px); }
+  [hidden] { display: none !important; }
+  @media (max-width: 1100px) {
+    main { grid-template-columns: 1fr; height: auto; flex: none; }
+    .feed canvas { height: 150px; flex: none; }
+    .poolPanel canvas { height: 280px; flex: none; }
+    .center { grid-template-rows: auto auto 230px; }
+    #tape { max-height: 260px; }
+    .stats { margin-left: 0; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>BRAIN<b>WHACK</b> LAB<small>whack() is the only dice in the box</small></h1>
+  <div class="controls">
+    <input id="target" value="HONK" maxlength="8" spellcheck="false" autocomplete="off" aria-label="What the program should print">
+    <button id="breed" type="button">BREED IT</button>
+    <button id="pick" class="ghost" type="button">LET whack() PICK</button>
+    <button id="wild" class="ghost" type="button">WILD WHACK</button>
+  </div>
+  <div class="stats">
+    <div class="stat hero"><b id="calls">0</b><span>calls to whack()</span></div>
+    <div class="stat"><b id="gen">0</b><span>generation</span></div>
+    <div class="stat"><b id="rate">0</b><span>whack() / second</span></div>
+    <div class="stat"><b id="split">0 · 0</b><span>genes · dice</span></div>
+    <div class="stat"><b id="restarts">0</b><span>restarts</span></div>
+  </div>
+</header>
+<div id="phases">
+  <span data-p="seed">1 · whack() writes 40 random programs</span>
+  <span data-p="breed">2 · breed: whack() mutates them, the fittest survive</span>
+  <span data-p="prune">3 · prune every word it doesn't need</span>
+  <span data-p="run">4 · run the bred program</span>
+</div>
+<main>
+  <section class="panel feed">
+    <h2>whack() feed</h2>
+    <canvas id="rain"></canvas>
+    <p class="caption">Every word here came out of a real whack() call. Nothing else in the breeder is random.</p>
+  </section>
+  <section class="center">
+    <div class="panel">
+      <h2 id="outTitle">best program's output vs the target</h2>
+      <div style="display:flex;gap:12px"><div id="tiles"></div><span id="extra"></span></div>
+      <div id="status">connecting to whack()…</div>
+    </div>
+    <div class="panel" id="tapePanel">
+      <h2 id="tapeTitle">champion program</h2>
+      <div id="tape"></div>
+    </div>
+    <div class="panel chartPanel" id="chartPanel">
+      <h2>fitness: each step up is one more letter locked in</h2>
+      <canvas id="chart"></canvas>
+    </div>
+    <div class="panel" id="vmPanel" hidden>
+      <div><h2>the stack (top on the right)</h2><div id="stack"></div></div>
+      <div id="note"></div>
+    </div>
+  </section>
+  <section class="panel poolPanel">
+    <h2>gene pool: 40 programs, one pixel per word, fittest on top</h2>
+    <canvas id="pool"></canvas>
+    <div class="legend" id="legend"></div>
+    <p class="caption">Watch the stripes line up: one lineage takes over the flock.</p>
+  </section>
+</main>
+<div id="stamp"></div>
+<script>
+const $ = id => document.getElementById(id);
+const css = getComputedStyle(document.documentElement);
+const FAMS = ["literal", "math", "stack", "output", "control", "debug", "noop"];
+const COLORS = Object.fromEntries([...FAMS, "segfault"].map(f => [f, css.getPropertyValue("--" + f).trim()]));
+const LABELS = { literal: "numbers", math: "maths", stack: "stack", output: "printing", control: "control flow", debug: "debugging", noop: "no-ops" };
+let WORDS = [], FAMILY = {}, DOCS = {};
+let token = 0, es = null;
+let S = {};
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const colorOf = w => w === "segfault" ? COLORS.segfault : COLORS[FAMILY[w] || "noop"];
+const glyph = c => c > 32 && c < 127 ? String.fromCharCode(c) : c === 32 ? "␣" : "·";
+const text = arr => arr.map(glyph).join("");
+const fmt = n => Math.round(n).toLocaleString("en-GB");
+
+function phase(p) { document.querySelectorAll("#phases span").forEach(s => s.classList.toggle("on", s.dataset.p === p)); }
+function status(html, err = false) { $("status").innerHTML = html; $("status").classList.toggle("err", err); }
+
+function fit(canvas) {
+  const dpr = window.devicePixelRatio || 1, r = canvas.getBoundingClientRect();
+  const w = Math.max(1, Math.round(r.width * dpr)), h = Math.max(1, Math.round(r.height * dpr));
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return [ctx, r.width, r.height];
+}
+
+// ---- the whack() feed: every word that falls came from a real call
+const drops = [];
+let dropCount = 0;
+function spawn(words, n) {
+  for (let i = 0; i < n && words && words.length; i++) {
+    const k = ++dropCount;  // golden-ratio spacing, so the page itself uses no randomness
+    drops.push({ w: words[(i * 7 + drops.length) % words.length], x: (k * 0.6180339887) % 1, y: -4 - ((k * 0.7548776662) % 1) * 30, v: 0.8 + ((k * 0.5698402910) % 1) * 0.9 });
+  }
+  if (drops.length > 70) drops.splice(0, drops.length - 70);
+}
+function rain() {
+  const [ctx, w, h] = fit($("rain"));
+  ctx.clearRect(0, 0, w, h);
+  ctx.font = "12px ui-monospace, Menlo, monospace";
+  ctx.textAlign = "center";
+  for (const d of drops) {
+    d.y += d.v;
+    ctx.globalAlpha = Math.max(0.1, 1 - d.y / h * 0.7);
+    ctx.fillStyle = colorOf(d.w);
+    ctx.fillText(d.w, 24 + d.x * (w - 48), d.y);
+  }
+  ctx.globalAlpha = 1;
+  for (let i = drops.length - 1; i >= 0; i--) if (drops[i].y > h + 20) drops.splice(i, 1);
+  requestAnimationFrame(rain);
+}
+
+// ---- output tiles: one per target character, converging as the flock evolves
+function renderTiles(out, target) {
+  const el = $("tiles");
+  const n = target ? target.length : Math.max(1, Math.min(out.length, 9));
+  while (el.children.length < n) el.insertAdjacentHTML("beforeend", "<div class='tile'><b></b><small></small><i></i></div>");
+  while (el.children.length > n) el.lastChild.remove();
+  [...el.children].forEach((tile, i) => {
+    const o = out[i], t = target ? target[i] : undefined;
+    const b = tile.querySelector("b"), g = o === undefined ? "_" : glyph(o);
+    const changed = b.textContent !== g;
+    b.textContent = g;
+    let kind = o === undefined ? "empty" : "free", label = o === undefined ? "" : String(o);
+    if (t !== undefined) {
+      if (o === undefined) label = "want " + glyph(t);
+      else {
+        const d = Math.abs(o - t);
+        kind = d === 0 ? "hit" : d <= 6 ? "near" : "far";
+        label = d === 0 ? glyph(t) + " ✓" : `want ${glyph(t)} · off ${d}`;
+        tile.style.setProperty("--d", (1 - Math.min(1, d / 40)).toFixed(2));
+      }
+    }
+    tile.querySelector("small").textContent = label;
+    tile.className = "tile " + kind + (changed ? " flip" : "");
+  });
+  const extra = out.length - n;
+  $("extra").textContent = extra > 0 ? `+${extra} more` : "";
+}
+
+// ---- the champion program as a tape of coloured words
+function renderTape(prog, prev) {
+  $("tape").innerHTML = prog.map((w, i) =>
+    `<span class="chip${prev && prev[i] !== w ? " fresh" : ""}" style="--c:${colorOf(w)}" title="${DOCS[w] || ""}">${w}</span>`).join("");
+}
+
+// ---- the gene pool: 40 programs, one pixel per word
+function renderPool(pool) {
+  const [ctx, w, h] = fit($("pool"));
+  ctx.clearRect(0, 0, w, h);
+  const cols = Math.max(24, ...pool.map(p => p.length)), cw = w / cols, rh = h / 40;
+  pool.forEach((p, r) => p.forEach((idx, c) => {
+    ctx.globalAlpha = 0.55 + (idx % 5) * 0.11;
+    ctx.fillStyle = colorOf(WORDS[idx]);
+    ctx.fillRect(c * cw, r * rh, Math.ceil(cw), Math.max(1, rh - 1));
+  }));
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = "#ffffff";
+  ctx.strokeRect(0.5, 0.5, Math.min(w - 1, pool[0].length * cw), rh - 1);
+}
+
+// ---- closeness chart, with a honk! marker at every restart
+function closeness(out, target) {
+  let s = 0;
+  target.forEach((t, i) => { if (i < out.length) s += Math.max(0, 1 - Math.abs(out[i] - t) / 48); });
+  return (s / target.length) * Math.pow(0.9, Math.abs(out.length - target.length));
+}
+function renderChart() {
+  const [ctx, w, h] = fit($("chart"));
+  ctx.clearRect(0, 0, w, h);
+  const H = S.history;
+  if (!H.length) return;
+  const last = H[H.length - 1].gen, maxGen = Math.max(100, last);
+  const X = g => 40 + (w - 50) * g / maxGen, Y = f => 10 + (h - 30) * (1 - f);
+  ctx.font = "10px ui-monospace, Menlo, monospace";
+  ctx.lineWidth = 1;
+  [0, 0.5, 1].forEach(f => {
+    ctx.strokeStyle = "#212932"; ctx.beginPath(); ctx.moveTo(40, Y(f)); ctx.lineTo(w - 10, Y(f)); ctx.stroke();
+    ctx.fillStyle = "#6c7886"; ctx.fillText(f * 100 + "%", 4, Y(f) + 3);
+  });
+  ctx.fillText("generation " + fmt(last), w - 130, h - 4);
+  S.restarts.forEach(g => {
+    ctx.save(); ctx.setLineDash([4, 4]); ctx.strokeStyle = COLORS.output;
+    ctx.beginPath(); ctx.moveTo(X(g), 10); ctx.lineTo(X(g), h - 20); ctx.stroke(); ctx.restore();
+    ctx.fillStyle = COLORS.output; ctx.fillText("honk!", X(g) + 4, 20);
+  });
+  const path = () => { ctx.beginPath(); H.forEach((p, i) => i ? ctx.lineTo(X(p.gen), Y(p.f)) : ctx.moveTo(X(p.gen), Y(p.f))); };
+  path(); ctx.lineTo(X(last), Y(0)); ctx.lineTo(X(H[0].gen), Y(0)); ctx.closePath();
+  const grad = ctx.createLinearGradient(0, 0, 0, h);
+  grad.addColorStop(0, "rgba(255, 204, 51, .32)"); grad.addColorStop(1, "rgba(255, 204, 51, 0)");
+  ctx.fillStyle = grad; ctx.fill();
+  path(); ctx.strokeStyle = COLORS.literal; ctx.lineWidth = 2; ctx.shadowColor = COLORS.literal; ctx.shadowBlur = 10; ctx.stroke(); ctx.shadowBlur = 0;
+}
+
+function counters(ev) {
+  $("calls").textContent = fmt(ev.calls);
+  $("gen").textContent = fmt(ev.gen);
+  $("split").textContent = `${fmt(ev.genes)} · ${fmt(ev.dice)}`;
+  $("restarts").textContent = ev.restarts;
+  $("rate").textContent = fmt(ev.calls / Math.max(ev.elapsed, 0.001));
+}
+
+function reset(mode) {
+  token++;
+  if (es) { es.close(); es = null; }
+  S = { history: [], restarts: [], target: null, champ: null };
+  $("stamp").className = "";
+  document.body.classList.remove("crash");
+  document.body.dataset.state = mode;
+  $("chartPanel").hidden = mode !== "breed";
+  $("vmPanel").hidden = mode === "breed";
+  $("tape").innerHTML = "";
+  $("tiles").innerHTML = "";
+  $("extra").textContent = "";
+  renderChart();
+  return token;
+}
+
+// ---- breeding: the Python breeder streams one event per frame
+function breed(target) {
+  const my = reset("breed");
+  ["calls", "gen", "rate", "restarts"].forEach(id => $(id).textContent = "0");
+  status(target ? `breeding a program that prints <b>${target}</b>…` : "asking whack() what to breed…");
+  es = new EventSource("/api/breed?target=" + encodeURIComponent(target || "") + (location.search.includes("fast") ? "&fast=1" : ""));
+  es.onmessage = e => {
+    if (my !== token) return;
+    const ev = JSON.parse(e.data);
+    if (ev.type === "start") {
+      S.target = [...ev.target].map(c => c.charCodeAt(0));
+      $("target").value = ev.target;
+      status((ev.chosen_by_whack ? `whack() chose the target: <b>${ev.target}</b>. ` : "") +
+             `Breeding from 40 programs that whack() wrote…`);
+      renderTiles([], S.target);
+    } else if (ev.type === "gen") {
+      phase(ev.gen === 1 ? "seed" : "breed");
+      if (ev.gen === 1) status("whack() just wrote 40 random programs. None of them print HONK yet.".replace("HONK", ev.target_text));
+      else if (S.history.length && S.history[0].gen === 1 && S.history.length === 1) status(`Breeding: every mutation and every choice comes from a fresh whack(). Letters lock in from the left.`);
+      counters(ev);
+      S.history.push({ gen: ev.gen, f: Math.max(0, ev.score) / ev.max });
+      renderTiles(ev.out, ev.target);
+      const key = ev.champ.join(" ");
+      if (key !== S.champKey) {
+        renderTape(ev.champ, S.champ);
+        S.champ = ev.champ; S.champKey = key;
+        $("tapeTitle").textContent = `champion program · ${ev.champ.length} words · new mutations flash`;
+      }
+      renderPool(ev.pool);
+      renderChart();
+      if (S.history.length % 2) spawn(ev.rain, 1);
+    } else if (ev.type === "restart") {
+      S.restarts.push(ev.gen);
+      status(`Stuck on <b>${text(ev.stuck_on)}</b>. Honk! The goose scatters the flock: restart ${ev.restarts} from fresh whacks.`);
+    } else if (ev.type === "gaveup") {
+      es.close(); es = null;
+      counters(ev);
+      status(`Gave up after 60 seconds. Best output: <b>${text(ev.out)}</b>. Try again: every run uses fresh whacks.`, true);
+    } else if (ev.type === "done") {
+      es.close(); es = null;
+      counters(ev);
+      finale(ev, my);
+    }
+  };
+  es.onerror = () => {
+    if (my === token && es) { es.close(); es = null; status("Lost contact with whack(). Is python3 whack_lab.py still running?", true); }
+  };
+}
+
+// ---- the finale: prune the champion, then run it one instruction at a time
+async function finale(ev, my) {
+  renderTiles(ev.trace.length ? ev.trace[ev.trace.length - 1].out : [], S.target);
+  status(`<b>Bred it.</b> ${fmt(ev.gen)} generations, ${fmt(ev.calls)} calls to whack(), ${ev.elapsed.toFixed(1)}s. Now pruning every word it doesn't need…`);
+  phase("prune");
+  renderTape(ev.before);
+  $("tapeTitle").textContent = `the winner · ${ev.before.length} words`;
+  await sleep(1500);
+  const keep = new Set(ev.keep), chips = [...$("tape").children];
+  for (let i = 0; i < chips.length; i++) {
+    if (my !== token) return;
+    if (!keep.has(i)) { chips[i].classList.add("cut"); await sleep(Math.max(120, 2400 / chips.length)); }
+  }
+  await sleep(1200);
+  if (my !== token) return;
+  renderTape(ev.program);
+  $("tapeTitle").textContent = `pruned to the ${ev.program.length} words that matter (from ${ev.before.length}) · running it`;
+  status(`Running the bred program. Every printing word adds a letter.`);
+  await execute(ev.program, ev.trace, ev.ending, S.target, my, ev.steps);
+  if (my === token) status(`<b>${ev.target_text}</b>, bred from ${fmt(ev.calls)} calls to whack(): ${fmt(ev.genes)} for genes and ${fmt(ev.dice)} for dice. Saved as bred_${ev.target_text.replace(/[^A-Za-z0-9]/g, "_")}.bw`);
+}
+
+async function execute(prog, trace, ending, target, my, steps) {
+  phase(target ? "run" : null);  // wild programs weren't bred, so no phase lights up
+  $("chartPanel").hidden = true;
+  $("vmPanel").hidden = false;
+  const chips = [...$("tape").children];
+  const delay = trace.length > 40 ? Math.max(18, 9000 / trace.length) : 330;
+  for (const f of trace) {
+    if (my !== token) return;
+    chips.forEach(c => c.classList.remove("pc"));
+    const chip = chips[f.pc];
+    if (chip) {
+      chip.classList.add("pc", "done");
+      const box = $("tape");
+      if (chip.offsetTop > box.scrollTop + box.clientHeight - 30 || chip.offsetTop < box.scrollTop) box.scrollTop = chip.offsetTop - 40;
+    }
+    $("stack").innerHTML = f.stack.length ? f.stack.map((v, i) =>
+      `<div class="bar${i === f.stack.length - 1 ? " top" : ""}"><i style="height:${Math.max(3, v / 255 * 100)}%"></i><b>${v}</b><small>${glyph(v)}</small></div>`).join("")
+      : `<span class="empty">empty stack</span>`;
+    spawn([f.w], 1);
+    $("note").innerHTML = `<b style="color:${colorOf(f.w)}">${f.w}</b>${DOCS[f.w] || ""}<br><span>${f.note || "&nbsp;"}</span>`;
+    renderTiles(f.out, target);
+    if (f.note && f.note.startsWith("prints")) await sleep(delay * 1.6);
+    await sleep(delay);
+  }
+  if (my !== token) return;
+  chips.forEach(c => c.classList.remove("pc"));
+  stamp(ending, steps);
+}
+
+function stamp(ending, steps) {
+  const el = $("stamp");
+  if (ending === "segfault") {
+    el.innerHTML = "Segmentation fault<small>(core dumped)</small>";
+    el.style.setProperty("--sc", COLORS.segfault);
+    document.body.classList.add("crash");
+    setTimeout(() => document.body.classList.remove("crash"), 900);
+  } else if (ending === "timeout") {
+    el.innerHTML = `Still running<small>infinite loop · gave up after ${fmt(steps)} steps</small>`;
+    el.style.setProperty("--sc", COLORS.literal);
+  } else {
+    el.innerHTML = "exit 0<small>finished cleanly</small>";
+    el.style.setProperty("--sc", COLORS.control);
+  }
+  el.className = "show";
+  document.body.dataset.state = "finished";
+  setTimeout(() => { if (el.className === "show") el.style.opacity = ""; }, 0);
+}
+
+// ---- a wild whack: one raw whack() call, run as a program
+async function wild() {
+  const my = reset("wild");
+  status("calling whack()…");
+  let r;
+  try { r = await (await fetch("/api/wild", { cache: "no-store" })).json(); }
+  catch { return status("Couldn't reach whack(). Run python3 whack_lab.py and open http://localhost:8026", true); }
+  if (my !== token) return;
+  spawn(r.program, 24);
+  $("outTitle").textContent = "what this wild program prints";
+  $("tapeTitle").textContent = `whack() wrote a ${r.program.length}-word program · running it`;
+  renderTape(r.program);
+  renderTiles([], null);
+  status(`whack() just wrote a ${r.program.length}-word program. Nobody designed it. Let's run it.`);
+  await execute(r.program, r.trace, r.ending, null, my, r.steps);
+  if (my === token) status(`It printed <b>${text(r.out).slice(0, 40) || "nothing"}</b>${r.out.length > 40 ? "…" : ""}. Wild programs rarely say anything useful. That's what breeding is for: try BREED IT.`);
+  $("outTitle").textContent = "best program's output vs the target";
+}
+
+function legend() {
+  $("legend").innerHTML = FAMS.map(f => `<span style="--c:${COLORS[f]}" title="${Object.keys(FAMILY).filter(w => FAMILY[w] === f).join(" ")}">${LABELS[f]}</span>`).join("") +
+    `<span style="--c:${COLORS.segfault}">segfault</span>`;
+}
+
+$("breed").onclick = () => breed($("target").value.trim() || "HONK");
+$("target").onkeydown = e => { if (e.key === "Enter") $("breed").click(); };
+$("pick").onclick = () => breed("");
+$("wild").onclick = () => wild();
+window.addEventListener("resize", () => { if (S.history) renderChart(); });
+
+(async function init() {
+  rain();
+  try {
+    const r = await (await fetch("/api/words")).json();
+    WORDS = r.words; FAMILY = r.family; DOCS = r.docs;
+  } catch {
+    return status("Start the lab first: python3 whack_lab.py, then open http://localhost:8026", true);
+  }
+  legend();
+  const q = new URLSearchParams(location.search);
+  if (q.has("breed")) breed(q.get("breed"));
+  else wild();
+})();
+</script>
+</body>
+</html>

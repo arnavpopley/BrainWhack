@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Whack Machine</title>
+<style>
+  :root { --bg: #14110f; --fg: #f4ecd8; --dim: #8a826f; --kick: #ff5d5d; --snare: #ff9f43; --hat: #ffd93d;
+          --bird: #6bcB77; --bass: #4d96ff; --lead: #c77dff; --rest: #3a342c; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.4 ui-monospace, Menlo, monospace; }
+  main { max-width: 1100px; margin: 0 auto; padding: 20px 16px 60px; }
+  h1 { margin: 0; font-size: 34px; color: #ffcc33; }
+  .bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 16px 0; }
+  button { font: inherit; font-weight: 700; padding: 12px 22px; border-radius: 10px; border: 0; cursor: pointer; background: #ffcc33; color: #14110f; }
+  button.ghost { background: transparent; color: var(--fg); border: 2px solid var(--dim); }
+  #stats { color: var(--dim); }
+  #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 6px; }
+  .tile { padding: 10px 4px; text-align: center; border-radius: 8px; background: color-mix(in srgb, var(--c) 22%, var(--bg));
+          border: 2px solid color-mix(in srgb, var(--c) 55%, var(--bg)); transition: transform .06s, background .06s; font-size: 13px; }
+  .tile.on { background: var(--c); color: #14110f; transform: scale(1.08); }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; margin: 14px 0; color: var(--dim); font-size: 13px; }
+  .legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 3px; background: var(--c); margin-right: 6px; }
+  #err { color: var(--kick); }
+  a { color: #ffcc33; }
+</style>
+</head>
+<body>
+<main>
+  <h1>🎵 Whack Machine</h1>
+  <p>Every call to <b>whack()</b> composes a loop. Each word is a hit, the number of words sets the tempo, and birds sing the melody. <a href="index.html">← arcade</a></p>
+  <div class="bar">
+    <button id="go">WHACK + PLAY</button>
+    <button id="stop" class="ghost">stop</button>
+    <label><input type="checkbox" id="auto" checked> new whack() every loop</label>
+    <span id="stats"></span>
+  </div>
+  <div class="legend">
+    <span style="--c:var(--kick)">kick: segfault deploy prod push commit</span>
+    <span style="--c:var(--snare)">snare: conflict bug incident merge</span>
+    <span style="--c:var(--hat)">hats: wifi semicolon io pointer stack overflow</span>
+    <span style="--c:var(--bird)">birds: duck quack goose honk</span>
+    <span style="--c:var(--bass)">bass: the sponsors</span>
+    <span style="--c:var(--lead)">lead: everything else</span>
+    <span style="--c:var(--rest)">silence: null sleep</span>
+  </div>
+  <p id="err"></p>
+  <div id="grid"></div>
+</main>
+<script>
+const KICK = ["segfault", "deploy", "prod", "push", "commit"];
+const SNARE = ["conflict", "bug", "incident", "merge"];
+const HAT = ["wifi", "semicolon", "io", "pointer", "stack", "overflow"];
+const BIRD = ["duck", "quack", "goose", "honk"];
+const BASS = ["warwick", "oculus", "compsoc", "marshall", "wace", "brevan", "howard", "capital", "one", "bloomberg", "netcraft"];
+const REST = ["null", "sleep"];
+const SCALE = [0, 3, 5, 7, 10, 12, 15, 17, 19, 22, 24]; // minor pentatonic, two octaves
+
+function kind(w) {
+  if (KICK.includes(w)) return "kick"; if (SNARE.includes(w)) return "snare";
+  if (HAT.includes(w)) return "hat"; if (BIRD.includes(w)) return "bird";
+  if (BASS.includes(w)) return "bass"; if (REST.includes(w)) return "rest"; return "lead";
+}
+function hash(w) { let h = 0; for (const c of w) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h; }
+
+let ctx, master, noiseBuf;
+function audio() {
+  if (ctx) return;
+  ctx = new AudioContext();
+  const comp = ctx.createDynamicsCompressor(); comp.connect(ctx.destination);
+  master = ctx.createGain(); master.gain.value = 0.8; master.connect(comp);
+  noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+  const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+}
+function env(t, peak, dur) {
+  const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(peak, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  g.connect(master); return g;
+}
+function osc(t, type, f0, f1, dur, peak, filter) {
+  const o = ctx.createOscillator(); o.type = type;
+  o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+  const g = env(t, peak, dur);
+  if (filter) { filter.connect(g); o.connect(filter); } else o.connect(g);
+  o.start(t); o.stop(t + dur + 0.02);
+}
+function noise(t, dur, peak, type, f0, f1 = f0) {
+  const s = ctx.createBufferSource(); s.buffer = noiseBuf;
+  const f = ctx.createBiquadFilter(); f.type = type;
+  f.frequency.setValueAtTime(f0, t); f.frequency.exponentialRampToValueAtTime(f1, t + dur);
+  s.connect(f); f.connect(env(t, peak, dur)); s.start(t); s.stop(t + dur + 0.02);
+}
+function filt(type, freq, q = 1) { const f = ctx.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q; return f; }
+const note = (base, w) => base * Math.pow(2, SCALE[hash(w) % SCALE.length] / 12);
+
+function play(w, t) {
+  switch (kind(w)) {
+    case "kick": osc(t, "sine", 160, 40, 0.35, 0.9); break;
+    case "snare": noise(t, 0.16, 0.5, "highpass", 1500); osc(t, "triangle", 200, 120, 0.08, 0.3); break;
+    case "hat": w === "overflow" ? noise(t, 0.3, 0.25, "bandpass", 300, 9000) : noise(t, 0.04, 0.25, "highpass", 8000); break;
+    case "bird":
+      if (w === "duck" || w === "quack") osc(t, "sawtooth", 750, 380, 0.14, 0.35, filt("bandpass", 1300, 4));
+      else osc(t, "square", 300, 230, 0.28, 0.22, filt("lowpass", 1400));
+      break;
+    case "bass": osc(t, "triangle", note(55, w), note(55, w), 0.22, 0.6); break;
+    case "lead": osc(t, "square", note(440, w), note(440, w) * 0.999, 0.12, 0.12, filt("lowpass", 3000)); break;
+  }
+}
+
+let words = [], step = 0, nextTime = 0, bpm = 120, timer = null, queued = null, playing = false;
+const grid = document.getElementById("grid"), stats = document.getElementById("stats"), err = document.getElementById("err");
+
+async function fetchWhack() {
+  try {
+    const r = await fetch("/api/whack", { cache: "no-store" });
+    err.textContent = "";
+    return (await r.json()).words;
+  } catch (e) {
+    err.textContent = "Couldn't reach whack(). Start the server: python3 whack_server.py, then open http://localhost:8026/music.html";
+    throw e;
+  }
+}
+function load(ws) {
+  words = ws; step = 0; bpm = 90 + ws.length; // the whack's length sets the tempo
+  grid.innerHTML = "";
+  ws.forEach(w => {
+    const d = document.createElement("div"); d.className = "tile"; d.textContent = w;
+    d.style.setProperty("--c", `var(--${kind(w)})`); grid.appendChild(d);
+  });
+  stats.textContent = `${ws.length} words · ${bpm} bpm`;
+  fetchWhack().then(n => queued = n).catch(() => {}); // pre-whack the next loop
+}
+function light(i, t) {
+  setTimeout(() => {
+    grid.querySelectorAll(".on").forEach(e => e.classList.remove("on"));
+    grid.children[i]?.classList.add("on");
+  }, Math.max(0, (t - ctx.currentTime) * 1000));
+}
+function tick() {
+  while (nextTime < ctx.currentTime + 0.12) {
+    play(words[step], nextTime); light(step, nextTime);
+    nextTime += 60 / bpm / 4; step++;
+    if (step >= words.length) {
+      step = 0;
+      if (document.getElementById("auto").checked && queued) { const q = queued; queued = null; load(q); }
+    }
+  }
+}
+document.getElementById("go").onclick = async () => {
+  audio(); await ctx.resume();
+  load(await fetchWhack());
+  if (!playing) { playing = true; nextTime = ctx.currentTime + 0.05; timer = setInterval(tick, 25); }
+};
+if (location.search.includes("auto")) fetchWhack().then(load).then(() => grid.children[3]?.classList.add("on"));
+document.getElementById("stop").onclick = () => { playing = false; clearInterval(timer); grid.querySelectorAll(".on").forEach(e => e.classList.remove("on")); };
+</script>
+</body>
+</html>
