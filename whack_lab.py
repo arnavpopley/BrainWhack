@@ -14,7 +14,7 @@ from urllib.parse import parse_qs, urlparse
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))  # whack() writes its file next to this script
 from whack import WORDS, whack  # noqa: E402
-from brainwhack import DOCS, FAMILY, INDEX, WhackRandom, evolve, run, save, whack_target  # noqa: E402
+from brainwhack import DOCS, FAMILY, INDEX, WhackRandom, breed_batch, evolve, run, save, whack_target  # noqa: E402
 
 PORT = int(os.environ.get("PORT", 8026))
 
@@ -45,6 +45,8 @@ class Lab(SimpleHTTPRequestHandler):
             return self.send_json({"words": WORDS, "family": FAMILY, "docs": DOCS})
         if url.path == "/api/wild":
             return self.wild()
+        if url.path == "/api/breed" and "batch" in url.query:  # the hosted page's replay mode
+            return self.send_json({"events": breed_batch(parse_qs(url.query).get("target", [""])[0])})
         if url.path == "/api/breed":
             return self.breed(parse_qs(url.query).get("target", [""])[0], "fast" not in url.query)
         return super().do_GET()

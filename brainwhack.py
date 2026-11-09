@@ -319,6 +319,36 @@ def evolve(target_text, rng=None, pop_size=40, elite=10, stall_limit=700, time_l
                                 for _ in range(pop_size - elite)]
 
 
+def json_ready(ev):
+    """Makes an evolve() event JSON-friendly. The gene pool travels as word indices."""
+    ev = dict(ev)
+    for key in ("out", "target", "stuck_on"):
+        if key in ev:
+            ev[key] = list(ev[key])
+    if "ranked" in ev:
+        ev["pool"] = [[INDEX[w] for w in p] for p in ev.pop("ranked")]
+    return ev
+
+
+def breed_batch(target_text, max_frames=160, time_limit=40):
+    """Runs a whole breed at full speed and returns sampled frames for a page to replay.
+    Used where the server can't stream events, such as the hosted Vercel version."""
+    rng = WhackRandom()
+    target_text = "".join(c for c in target_text if 32 <= ord(c) < 127)[:8]
+    chosen = not target_text
+    if chosen:
+        target_text = whack_target(rng)
+    frames = [{"type": "start", "target": target_text, "chosen_by_whack": chosen}]
+    for ev in evolve(target_text, rng, time_limit=time_limit):
+        if ev["type"] != "gen" or ev["gen"] == 1 or ev["improved"] or ev["gen"] % 5 == 0:
+            frames.append(json_ready(ev))
+    gens = [i for i, f in enumerate(frames) if f["type"] == "gen"]
+    if len(gens) > max_frames:
+        keep = set(gens[::-(-len(gens) // max_frames)]) | {gens[0], gens[-1]}
+        frames = [f for i, f in enumerate(frames) if f["type"] != "gen" or i in keep]
+    return frames
+
+
 # ---------------------------------------------------------------- terminal views
 
 TTY = sys.stdout.isatty() and not os.environ.get("NO_COLOR")

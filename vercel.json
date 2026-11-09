@@ -1,0 +1,10 @@
+{
+  "functions": {
+    "api/lab.py": { "maxDuration": 60, "includeFiles": "{brainwhack.py,whack.py}" }
+  },
+  "rewrites": [
+    { "source": "/api/words", "destination": "/api/lab?route=words" },
+    { "source": "/api/wild", "destination": "/api/lab?route=wild" },
+    { "source": "/api/breed", "destination": "/api/lab?route=breed" }
+  ]
+}

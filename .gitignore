@@ -1,3 +1,4 @@
 whack
 __pycache__/
 whackchain.json
+.vercel

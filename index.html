@@ -318,53 +318,71 @@ function reset(mode) {
   return token;
 }
 
-// ---- breeding: the Python breeder streams one event per frame
+// ---- breeding. Locally the Python breeder streams one event per frame. Hosted on Vercel,
+// functions can't stream, so the server runs the whole breed and the page replays its frames.
+const HOSTED = !["localhost", "127.0.0.1"].includes(location.hostname) || location.search.includes("hosted");
+function closeStream() { if (es) { es.close(); es = null; } }
+
+function handle(ev, my) {
+  if (my !== token) return;
+  if (ev.type === "start") {
+    S.target = [...ev.target].map(c => c.charCodeAt(0));
+    $("target").value = ev.target;
+    status((ev.chosen_by_whack ? `whack() chose the target: <b>${ev.target}</b>. ` : "") +
+           `Breeding from 40 programs that whack() wrote…`);
+    renderTiles([], S.target);
+  } else if (ev.type === "gen") {
+    phase(ev.gen === 1 ? "seed" : "breed");
+    if (ev.gen === 1) status("whack() just wrote 40 random programs. None of them print HONK yet.".replace("HONK", ev.target_text));
+    else if (S.history.length && S.history[0].gen === 1 && S.history.length === 1) status(`Breeding: every mutation and every choice comes from a fresh whack(). Letters lock in from the left.`);
+    counters(ev);
+    S.history.push({ gen: ev.gen, f: Math.max(0, ev.score) / ev.max });
+    renderTiles(ev.out, ev.target);
+    const key = ev.champ.join(" ");
+    if (key !== S.champKey) {
+      renderTape(ev.champ, S.champ);
+      S.champ = ev.champ; S.champKey = key;
+      $("tapeTitle").textContent = `champion program · ${ev.champ.length} words · new mutations flash`;
+    }
+    renderPool(ev.pool);
+    renderChart();
+    spawn(ev.rain, 1);
+  } else if (ev.type === "restart") {
+    S.restarts.push(ev.gen);
+    status(`Stuck on <b>${text(ev.stuck_on)}</b>. Honk! The goose scatters the flock: restart ${ev.restarts} from fresh whacks.`);
+  } else if (ev.type === "gaveup") {
+    closeStream();
+    counters(ev);
+    status(`Gave up after ${Math.round(ev.elapsed)} seconds. Best output: <b>${text(ev.out)}</b>. Try again: every run uses fresh whacks.`, true);
+  } else if (ev.type === "done") {
+    closeStream();
+    counters(ev);
+    finale(ev, my);
+  }
+}
+
 function breed(target) {
   const my = reset("breed");
   ["calls", "gen", "rate", "restarts"].forEach(id => $(id).textContent = "0");
+  if (HOSTED) return breedReplay(target, my);
   status(target ? `breeding a program that prints <b>${target}</b>…` : "asking whack() what to breed…");
   es = new EventSource("/api/breed?target=" + encodeURIComponent(target || "") + (location.search.includes("fast") ? "&fast=1" : ""));
-  es.onmessage = e => {
-    if (my !== token) return;
-    const ev = JSON.parse(e.data);
-    if (ev.type === "start") {
-      S.target = [...ev.target].map(c => c.charCodeAt(0));
-      $("target").value = ev.target;
-      status((ev.chosen_by_whack ? `whack() chose the target: <b>${ev.target}</b>. ` : "") +
-             `Breeding from 40 programs that whack() wrote…`);
-      renderTiles([], S.target);
-    } else if (ev.type === "gen") {
-      phase(ev.gen === 1 ? "seed" : "breed");
-      if (ev.gen === 1) status("whack() just wrote 40 random programs. None of them print HONK yet.".replace("HONK", ev.target_text));
-      else if (S.history.length && S.history[0].gen === 1 && S.history.length === 1) status(`Breeding: every mutation and every choice comes from a fresh whack(). Letters lock in from the left.`);
-      counters(ev);
-      S.history.push({ gen: ev.gen, f: Math.max(0, ev.score) / ev.max });
-      renderTiles(ev.out, ev.target);
-      const key = ev.champ.join(" ");
-      if (key !== S.champKey) {
-        renderTape(ev.champ, S.champ);
-        S.champ = ev.champ; S.champKey = key;
-        $("tapeTitle").textContent = `champion program · ${ev.champ.length} words · new mutations flash`;
-      }
-      renderPool(ev.pool);
-      renderChart();
-      if (S.history.length % 2) spawn(ev.rain, 1);
-    } else if (ev.type === "restart") {
-      S.restarts.push(ev.gen);
-      status(`Stuck on <b>${text(ev.stuck_on)}</b>. Honk! The goose scatters the flock: restart ${ev.restarts} from fresh whacks.`);
-    } else if (ev.type === "gaveup") {
-      es.close(); es = null;
-      counters(ev);
-      status(`Gave up after 60 seconds. Best output: <b>${text(ev.out)}</b>. Try again: every run uses fresh whacks.`, true);
-    } else if (ev.type === "done") {
-      es.close(); es = null;
-      counters(ev);
-      finale(ev, my);
-    }
-  };
+  es.onmessage = e => handle(JSON.parse(e.data), my);
   es.onerror = () => {
-    if (my === token && es) { es.close(); es = null; status("Lost contact with whack(). Is python3 whack_lab.py still running?", true); }
+    if (my === token && es) { closeStream(); status("Lost contact with whack(). Is python3 whack_lab.py still running?", true); }
   };
+}
+
+async function breedReplay(target, my) {
+  status(`whack() is breeding ${target ? `<b>${target}</b>` : "something"} on the server. This takes 5 to 40 seconds, then the whole run replays here…`);
+  let events;
+  try { events = (await (await fetch("/api/breed?batch=1&target=" + encodeURIComponent(target || ""), { cache: "no-store" })).json()).events; }
+  catch { return my === token && status("The server couldn't finish this breed. Try again: every run uses fresh whacks.", true); }
+  for (const ev of events) {
+    if (my !== token) return;
+    handle(ev, my);
+    await sleep(ev.type === "gen" ? (ev.gen === 1 ? 2200 : 90) : ev.type === "restart" ? 1500 : 0);
+  }
 }
 
 // ---- the finale: prune the champion, then run it one instruction at a time
@@ -386,7 +404,7 @@ async function finale(ev, my) {
   $("tapeTitle").textContent = `pruned to the ${ev.program.length} words that matter (from ${ev.before.length}) · running it`;
   status(`Running the bred program. Every printing word adds a letter.`);
   await execute(ev.program, ev.trace, ev.ending, S.target, my, ev.steps);
-  if (my === token) status(`<b>${ev.target_text}</b>, bred from ${fmt(ev.calls)} calls to whack(): ${fmt(ev.genes)} for genes and ${fmt(ev.dice)} for dice. Saved as bred_${ev.target_text.replace(/[^A-Za-z0-9]/g, "_")}.bw`);
+  if (my === token) status(`<b>${ev.target_text}</b>, bred from ${fmt(ev.calls)} calls to whack(): ${fmt(ev.genes)} for genes and ${fmt(ev.dice)} for dice.` + (HOSTED ? "" : ` Saved as bred_${ev.target_text.replace(/[^A-Za-z0-9]/g, "_")}.bw`));
 }
 
 async function execute(prog, trace, ending, target, my, steps) {
