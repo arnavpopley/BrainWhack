@@ -31,6 +31,9 @@
   .stat.hero b { color: var(--literal); font-size: 24px; text-shadow: 0 0 18px rgba(255, 204, 51, .5); }
   #phases { display: flex; gap: 8px; padding: 10px 20px 0; flex-wrap: wrap; }
   #phases span { padding: 5px 12px; border-radius: 999px; border: 1px solid var(--line); color: var(--dim); font-size: 12px; transition: all .3s; }
+  #phases #help { margin-left: auto; padding: 5px 14px; border-radius: 999px; font-size: 12px; background: transparent; color: var(--literal);
+                  border: 1px solid var(--literal); box-shadow: 0 0 14px -6px var(--literal); }
+  #phases #help:hover { background: var(--literal); color: #0a0c0f; }
   #phases span.on { color: #0a0c0f; background: var(--literal); border-color: var(--literal); box-shadow: 0 0 18px -4px var(--literal); font-weight: 700; }
   main { flex: 1; display: grid; grid-template-columns: 210px minmax(0, 1fr) 360px; gap: 14px; padding: 14px 20px 18px; height: 0; min-height: 600px; }
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; position: relative; overflow: hidden; min-height: 0; }
@@ -92,6 +95,28 @@
   @keyframes shake { 0%, 100% { transform: none; } 25% { transform: translate(-7px, 3px); } 50% { transform: translate(6px, -3px); } 75% { transform: translate(-3px, -2px); } }
   body.crash::after { content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 8;
                       background: repeating-linear-gradient(0deg, rgba(255, 59, 59, .1) 0 2px, transparent 2px 4px); }
+  #intro { position: fixed; inset: 0; z-index: 20; background: rgba(5, 7, 9, .74); backdrop-filter: blur(6px); display: grid; place-items: center; padding: 16px; }
+  #intro .card { position: relative; width: min(860px, 100%); max-height: calc(100vh - 32px); overflow-y: auto; background: var(--panel); border: 1px solid var(--line);
+                 border-radius: 16px; padding: 26px 30px 22px; box-shadow: 0 30px 80px -20px #000; font-size: 14px; line-height: 1.55; }
+  #intro h2 { margin: 0 0 10px; font-size: 24px; color: var(--literal); text-transform: none; letter-spacing: 0; }
+  #intro h3 { margin: 22px 0 6px; font-size: 15px; color: var(--fg); }
+  #intro p { margin: 6px 0; color: #c6d0d6; }
+  #intro .lede { font-size: 15px; color: var(--fg); }
+  #intro .small { color: var(--dim); font-size: 12.5px; }
+  #intro code { color: var(--literal); }
+  #intro .example { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 12px 0; padding: 12px 14px; background: #0c0f13; border: 1px solid var(--line); border-radius: 10px; }
+  #intro .example .arrow { color: var(--dim); margin-right: 8px; }
+  #intro .example .arrow::before { content: "\2192  "; }
+  #intro .example b { color: var(--control); font-size: 18px; }
+  #intro .steps { margin: 6px 0; padding-left: 22px; color: #c6d0d6; }
+  #intro .steps li { margin: 7px 0; }
+  #intro .steps b, #intro .lede b { color: var(--fg); }
+  #intro .guide { display: grid; grid-template-columns: 150px 1fr; gap: 7px 14px; margin: 6px 0; }
+  #intro dt { color: var(--literal); font-weight: 700; }
+  #intro dd { margin: 0; color: #c6d0d6; }
+  #intro .actions { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+  #intro .x { position: absolute; top: 10px; right: 12px; background: none; border: 0; color: var(--dim); font-size: 26px; padding: 4px 10px; }
+  @media (max-width: 640px) { #intro .guide { grid-template-columns: 1fr; } #intro .card { padding: 20px 18px; } }
   [hidden] { display: none !important; }
   @media (max-width: 1100px) {
     main { grid-template-columns: 1fr; height: auto; flex: none; }
@@ -125,6 +150,7 @@
   <span data-p="breed">2 · breed: whack() mutates them, the fittest survive</span>
   <span data-p="prune">3 · prune every word it doesn't need</span>
   <span data-p="run">4 · run the bred program</span>
+  <button id="help" type="button">HOW IT WORKS</button>
 </div>
 <main>
   <section class="panel feed">
@@ -158,6 +184,46 @@
     <p class="caption">Watch the stripes line up: one lineage takes over the flock.</p>
   </section>
 </main>
+<div id="intro" hidden role="dialog" aria-modal="true" aria-labelledby="introTitle">
+  <div class="card">
+    <button class="x" id="introX" type="button" aria-label="Close">&times;</button>
+    <h2 id="introTitle">What's happening here?</h2>
+    <p class="lede">Every hacker at WHACK 26 got the same function, <code>whack()</code>. Each call writes between 1 and 100 random words from a fixed list of 42: ducks, geese, sponsors and hackathon suffering. BrainWhack turns those words into a programming language, then <b>evolves</b> a program that prints the word you choose, using nothing but whack() for randomness.</p>
+
+    <h3>1. Every word is an instruction</h3>
+    <p>The machine keeps a stack of numbers, and letters are numbers too: A is 65 and H is 72. Some words make numbers, some do maths, and some print.</p>
+    <div class="example">
+      <span class="chip" style="--c:var(--literal)">capital</span><span class="arrow">65</span>
+      <span class="chip" style="--c:var(--math)">coffee &times;7</span><span class="arrow">72</span>
+      <span class="chip" style="--c:var(--output)">honk</span><span class="arrow">prints <b>H</b></span>
+    </div>
+    <p class="small">Every word means something, so there are no syntax errors: any whack() output runs. Hover over a word in a program to see what it does.</p>
+
+    <h3>2. Random programs are mostly garbage</h3>
+    <p>Run raw, about 60% of whack() programs hit the word <code>segfault</code> and crash. Most of the rest finish after printing junk, and none of them say HONK. Press <b>WILD WHACK</b> to watch one.</p>
+
+    <h3>3. So BrainWhack breeds one</h3>
+    <ol class="steps">
+      <li><b>whack() writes 40 random programs.</b> That's the first generation.</li>
+      <li><b>Breed.</b> Each program is scored on how many letters of the target it gets right from the left, then on how close the next letter is. The best 10 survive, and whack() mutates them into 30 children by splicing in, swapping, crossing over or deleting words. Letters lock in from the left until the output matches.</li>
+      <li><b>Prune.</b> Every word the winner doesn't need is crossed out.</li>
+      <li><b>Run.</b> The bred program runs one word at a time, with the stack shown live, until it prints the target.</li>
+    </ol>
+
+    <h3>Reading the screen</h3>
+    <dl class="guide">
+      <dt>whack() feed</dt><dd>Words falling in as whack() is called.</dd>
+      <dt>Output vs target</dt><dd>What the best program prints right now. Green tiles are letters locked in.</dd>
+      <dt>Champion program</dt><dd>The best program so far. Colours show what kind of instruction each word is, and new mutations flash.</dd>
+      <dt>Gene pool</dt><dd>All 40 programs, one row each, one pixel per word. As one family takes over, the stripes line up.</dd>
+      <dt>Fitness</dt><dd>Each step up is one more letter locked in. "honk!" marks a restart, when breeding gets stuck and starts again from fresh whacks.</dd>
+      <dt>Counters</dt><dd>Calls to whack(), split into genes (words that go into programs) and dice (calls used for random choices).</dd>
+    </dl>
+
+    <p class="small">whack() is the only randomness here: the breeder never uses Python's random module, and this page has no randomness of its own. <span id="introHosted" hidden>Online, the server breeds the whole run in one go, then this page replays it, so there's a short wait before it starts.</span></p>
+    <div class="actions"><button id="introGo" type="button">BREED HONK</button><button id="introClose" class="ghost" type="button">CLOSE</button></div>
+  </div>
+</div>
 <div id="stamp"></div>
 <script>
 const $ = id => document.getElementById(id);
@@ -483,6 +549,27 @@ $("breed").onclick = () => breed($("target").value.trim() || "HONK");
 $("target").onkeydown = e => { if (e.key === "Enter") $("breed").click(); };
 $("pick").onclick = () => breed("");
 $("wild").onclick = () => wild();
+
+// ---- the "how it works" explainer
+let pending = null;  // what to run once a first-time visitor closes the explainer
+function intro(open) {
+  $("intro").hidden = !open;
+  if (!open) return;
+  $("introHosted").hidden = !HOSTED;
+  $("introGo").textContent = "BREED " + ($("target").value.trim() || "HONK") + " NOW";
+  $("intro").querySelector(".card").scrollTop = 0;  // always open at the title
+  $("introGo").focus({ preventScroll: true });
+}
+function closeIntro() {
+  intro(false);
+  if (pending) { const run = pending; pending = null; run(); }
+}
+$("help").onclick = () => intro(true);
+$("introClose").onclick = closeIntro;
+$("introX").onclick = closeIntro;
+$("introGo").onclick = () => { pending = null; intro(false); breed($("target").value.trim() || "HONK"); };
+$("intro").onclick = e => { if (e.target.id === "intro") closeIntro(); };
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("intro").hidden) closeIntro(); });
 window.addEventListener("resize", () => { if (S.history) renderChart(); });
 
 (async function init() {
@@ -495,8 +582,12 @@ window.addEventListener("resize", () => { if (S.history) renderChart(); });
   }
   legend();
   const q = new URLSearchParams(location.search);
-  if (q.has("breed")) breed(q.get("breed"));
-  else wild();
+  if (q.has("breed")) $("target").value = q.get("breed") || "HONK";
+  const start = q.has("breed") ? () => breed(q.get("breed")) : () => wild();
+  let seen = false;
+  try { seen = localStorage.getItem("brainwhack-intro") === "1"; localStorage.setItem("brainwhack-intro", "1"); } catch {}
+  if (!seen && !q.has("nointro")) { pending = start; intro(true); }  // first visit: explain before anything runs
+  else start();
 })();
 </script>
 </body>

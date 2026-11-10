@@ -174,6 +174,7 @@ The target is HONK because the first program in a goose language should be Hello
 - **Gene pool:** all 40 programs as rows of pixels, one pixel per word, fittest on top. As one lineage takes over, the stripes line up.
 - **Fitness chart:** the staircase, with a "honk!" marker at every restart.
 - **Phase bar:** whack() writes 40 programs, breed, prune, run.
+- **How it works:** a plain-English explainer of the language, the breeding and every panel. It opens by itself on a first visit, before anything runs, and the HOW IT WORKS button reopens it.
 - **Finale:** the winner is pruned word by word, then runs one instruction at a time with a live stack. It ends with an "exit 0" stamp, or a screen shake and a red "Segmentation fault (core dumped)" stamp.
 
 The hosted version at [brainwhack.vercel.app](https://brainwhack.vercel.app) works slightly differently. Vercel functions can't stream, so `api/lab.py` runs each breed in full on the server in one request, at full speed, from `/tmp` (the only writable folder there, where whack() writes its file). The page then replays the sampled generations at a watchable pace. Locally, every generation streams live.
